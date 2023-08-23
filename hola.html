@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    
+    <title>Mapa</title>
+    
+    <link rel="shortcut icon" type="image/x-icon" href="docs/images/favicon.ico" />
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+    <style>
+        html, body {
+            height: 100%;
+            margin: 0;
+        }
+        .leaflet-container {
+            height: 400px;
+            width: 600px;
+            max-width: 100%;
+            max-height: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div id="map" style="width: 1600px; height: 900px;"></div>
+    <script>
+        var db;
+        var request = window.indexedDB.open("MyDatabase", 1);
+
+        request.onerror = function(event) {
+            console.log("Database error: " + event.target.errorCode);
+        };
+
+        request.onsuccess = function(event) {
+            db = event.target.result;
+
+            var map = L.map('map').setView([-27.4712, -58.8396], 13); // Coordenadas de Corrientes, Argentina
+
+            var tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+            }).addTo(map);
+
+            function addMarker(e) {
+                var message = prompt('Ingrese el mensaje para la ubicación:');
+                if (!message) return;
+
+                var newMarker = L.marker(e.latlng, { riseOnHover: false })  // Deshabilita el enfoque al pasar el cursor
+                    .addTo(map)
+                    .bindPopup('<b>' + message + '</b>').openPopup();
+
+                // Guarda la ubicación y el mensaje en IndexedDB
+                var transaction = db.transaction(["locations"], "readwrite");
+                var objectStore = transaction.objectStore("locations");
+                objectStore.add({ latlng: e.latlng, message: message });
+            }
+
+            map.on('click', addMarker);
+
+            function calcularPesoYLongitud(str) {
+                const longitud = str.length;
+                const pesoEnBytes = new TextEncoder().encode(str).length;
+                const pesoEnKilobytes = (pesoEnBytes / 1024).toFixed(2);
+                const textoConcatenado = `${longitud} caracteres, ${pesoEnKilobytes} KB`;
+                
+                return textoConcatenado;
+            }
+
+            // Recupera las ubicaciones y mensajes del IndexedDB y agrega los marcadores con popups
+            var transaction = db.transaction(["locations"], "readonly");
+            var objectStore = transaction.objectStore("locations");
+            objectStore.openCursor().onsuccess = function(event) {
+                var cursor = event.target.result;
+                if (cursor) {
+                    L.marker(cursor.value.latlng, { riseOnHover: false })
+                        .addTo(map)
+                        .bindPopup('<b>' + calcularPesoYLongitud(cursor.value.message) + '</b><br />').openPopup();
+                    cursor.continue();
+                }
+            };
+        };
+
+        request.onupgradeneeded = function(event) {
+            var db = event.target.result;
+            var objectStore = db.createObjectStore("locations", { keyPath: "id", autoIncrement: true });
+            objectStore.createIndex("message", "message", { unique: false });
+        };
+    </script>
+</body>
+</html>
